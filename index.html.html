@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scout Pallavolo – ASD SMILE</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  // Colori semantici collegati alle variabili CSS (tema chiaro/scuro automatico)
+  tailwind.config = { theme: { extend: { colors: { bg:'var(--bg)', card:'var(--card)', fg:'var(--fg)', mut:'var(--mut)', bd:'var(--bd)' } } } };
+</script>
+<style>
+  :root{--bg:#f1f5f9;--card:#ffffff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;color-scheme:light;
+        box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1220;--card:#162033;--fg:#f1f5f9;--mut:#94a3b8;--bd:#27344d;color-scheme:dark}}
+  :root[data-theme="dark"]{--bg:#0b1220;--card:#162033;--fg:#f1f5f9;--mut:#94a3b8;--bd:#27344d;color-scheme:dark}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  /* Pulsanti grandi, adatti al touch */
+  .btn{min-height:58px;width:100%;padding:6px 8px;line-height:1.15;border-radius:14px;font-weight:700;font-size:15px;color:#fff;touch-action:manipulation;transition:transform .08s}
+  .btn:active{transform:scale(.96)}
+  .btn:disabled{opacity:.35}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-5xl mx-auto p-2 sm:p-4 space-y-3">
+
+  <!-- INTESTAZIONE: contatore set vinti -->
+  <header class="bg-card border border-bd rounded-2xl p-3 text-center">
+    <div class="text-xs font-bold tracking-widest text-mut">SET <span id="setNo">1</span> IN CORSO</div>
+    <div class="flex items-center justify-center gap-4 font-black">
+      <span id="wA" class="text-5xl text-blue-600">0</span>
+      <span class="text-xl text-mut">SET VINTI</span>
+      <span id="wB" class="text-5xl text-orange-500">0</span>
+    </div>
+    <div id="partials" class="mt-1 text-sm font-semibold text-mut min-h-[1.25rem]"></div>
+  </header>
+
+  <!-- SQUADRE: A a sinistra, B a destra -->
+  <main class="grid grid-cols-2 gap-2 sm:gap-4">
+
+    <!-- SQUADRA A: nome bloccato -->
+    <section class="bg-card border border-bd rounded-2xl p-2 sm:p-4 space-y-2">
+      <input value="ASD SMILE" readonly aria-label="Squadra A (bloccata)"
+             class="w-full text-center font-extrabold text-lg bg-transparent border-b-2 border-blue-600 outline-none pb-1">
+      <div id="sA" class="text-center text-7xl sm:text-8xl font-black text-blue-600 leading-none py-2">0</div>
+      <input id="jersey" type="text" inputmode="numeric" maxlength="2" placeholder="N° maglia"
+             oninput="this.value=this.value.replace(/\D/g,'')"
+             class="w-full h-14 text-center text-2xl font-bold rounded-xl border-2 border-bd bg-bg outline-none focus:border-blue-600">
+      <div id="btnA" class="space-y-2"></div>
+    </section>
+
+    <!-- SQUADRA B: nome modificabile + errori di ASD SMILE -->
+    <section class="bg-card border border-bd rounded-2xl p-2 sm:p-4 space-y-2">
+      <input id="nameB" maxlength="30" placeholder="Squadra avversaria" oninput="render()" aria-label="Nome squadra B"
+             class="w-full text-center font-extrabold text-lg bg-transparent border-b-2 border-orange-500 outline-none pb-1">
+      <div id="sB" class="text-center text-7xl sm:text-8xl font-black text-orange-500 leading-none py-2">0</div>
+      <div id="btnB" class="space-y-2 pt-0.5"></div>
+      <div class="rounded-xl border-2 border-red-500/60 p-2 space-y-2">
+        <div class="text-xs font-bold text-red-500 text-center uppercase leading-tight">Errori ASD SMILE<br>(punto avversario, usa n° maglia)</div>
+        <div id="errs" class="space-y-2"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- CONTROLLO SET -->
+  <div class="bg-card border border-bd rounded-2xl p-3 space-y-2">
+    <p id="hint" class="text-center text-sm font-bold text-amber-500 min-h-[1.25rem]"></p>
+    <div class="grid grid-cols-3 gap-2">
+      <button id="undo" class="btn bg-slate-600" onclick="undo()">↶ Annulla</button>
+      <button id="close" class="btn bg-emerald-600 col-span-2 text-base" onclick="closeSet()">Chiudi Set e Assegna</button>
+    </div>
+  </div>
+
+  <!-- PLAY-BY-PLAY (più recente in alto) -->
+  <section class="bg-card border border-bd rounded-2xl overflow-hidden">
+    <h2 class="px-3 py-2 font-extrabold">Play-by-Play</h2>
+    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+      <table class="w-full text-sm text-left">
+        <thead class="bg-bg text-mut text-xs uppercase sticky top-0">
+          <tr><th class="px-3 py-2">Set</th><th class="px-2">Punti</th><th class="px-2">Squadra</th><th class="px-2">Giocatore</th><th class="px-2">Azione</th></tr>
+        </thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ESPORTAZIONE -->
+  <footer class="grid grid-cols-2 gap-2 pb-4">
+    <button class="btn bg-rose-600" onclick="exportPDF()">Esporta in PDF</button>
+    <button class="btn bg-green-700" onclick="exportXLSX()">Esporta in Excel</button>
+  </footer>
+</div>
+
+<script>
+/* ============ STATO ============ */
+const W = 25;                                   // punti per vincere un set (con 2 di scarto)
+const S = { wins:{A:0,B:0}, sets:[], cur:{A:0,B:0}, log:[] };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nm = t => t === 'A' ? 'ASD SMILE' : ($('nameB').value.trim() || 'Squadra B');
+
+/* ============ LOGICA ============ */
+// Vincitore del set in corso: 25+ punti e almeno 2 di scarto (gestisce i vantaggi)
+function winner(){
+  const {A,B} = S.cur;
+  if (A >= W && A - B >= 2) return 'A';
+  if (B >= W && B - A >= 2) return 'B';
+  return null;
+}
+
+// Assegna un punto a "team"; usePlayer = allega il numero di maglia inserito
+function point(team, type, usePlayer){
+  if (winner()) return;                         // set già vinto: serve chiuderlo
+  S.cur[team]++;
+  const player = usePlayer ? $('jersey').value.trim() : '';
+  S.log.push({ set:S.sets.length+1, a:S.cur.A, b:S.cur.B, team, player, type });
+  if (usePlayer) $('jersey').value = '';
+  render();
+}
+
+// Chiude il set: azzera il punteggio, +1 set al vincitore, salva il parziale
+function closeSet(){
+  const w = winner(); if (!w) return;
+  S.sets.push({ A:S.cur.A, B:S.cur.B, w });
+  S.wins[w]++; S.cur = {A:0,B:0};
+  render();
+}
+
+// Annulla l'ultimo punto del set in corso (tocchi sbagliati)
+function undo(){
+  const l = S.log[S.log.length-1];
+  if (!l || l.set !== S.sets.length+1) return;
+  S.log.pop(); S.cur[l.team]--; render();
+}
+
+/* ============ INTERFACCIA ============ */
+function addBtns(id, cls, list){
+  list.forEach(([label, fn]) => {
+    const b = document.createElement('button');
+    b.className = 'btn act ' + cls; b.textContent = label; b.onclick = fn;
+    $(id).append(b);
+  });
+}
+addBtns('btnA','bg-blue-600',['Attacco','Muro','Battuta'].map(x => [`Punto: ${x}`, () => point('A',x,true)]));
+addBtns('btnA','bg-emerald-600',[['Punto da Errore Avversario', () => point('A','Errore avversario',false)]]);
+addBtns('btnB','bg-orange-500',['Attacco','Muro','Battuta'].map(x => [`Punto: ${x}`, () => point('B',x,false)]));
+addBtns('errs','bg-red-600',['Attacco','Muro','Battuta','Difesa'].map(x => [`Errore in ${x}`, () => point('B',`Errore in ${x} (SMILE)`,true)]));
+
+function render(){
+  $('sA').textContent = S.cur.A;  $('sB').textContent = S.cur.B;
+  $('wA').textContent = S.wins.A; $('wB').textContent = S.wins.B;
+  $('setNo').textContent = S.sets.length + 1;
+  $('partials').textContent = S.sets.map(s => `${s.A}-${s.B}`).join('   ·   ');
+  const w = winner();
+  document.querySelectorAll('.act').forEach(b => b.disabled = !!w);
+  $('close').disabled = !w;
+  const l = S.log[S.log.length-1];
+  $('undo').disabled = !(l && l.set === S.sets.length+1);
+  $('hint').textContent = w ? `Set vinto da ${nm(w)}: premi “Chiudi Set e Assegna”`
+    : (S.cur.A >= W-1 && S.cur.B >= W-1 ? 'Vantaggi: servono 2 punti di scarto' : '');
+  $('log').innerHTML = S.log.length
+    ? S.log.slice().reverse().map(r => `<tr class="border-t border-bd ${r.type.startsWith('Errore in') ? 'text-red-500' : ''}">
+        <td class="px-3 py-2 font-bold">${r.set}</td><td class="px-2 font-bold whitespace-nowrap">${r.a}-${r.b}</td>
+        <td class="px-2 whitespace-nowrap ${r.team==='A'?'text-blue-600':'text-orange-500'} font-semibold">${esc(nm(r.team))}</td>
+        <td class="px-2">${esc(r.player || '-')}</td><td class="px-2 whitespace-nowrap">${esc(r.type)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="p-4 text-center text-mut">Nessuna azione registrata</td></tr>';
+}
+
+/* ============ ESPORTAZIONE ============ */
+const logRows = () => S.log.map(r => [r.set, `${r.a}-${r.b}`, nm(r.team), r.player || '-', r.type]);
+const partialRows = () => {
+  const p = S.sets.map((s,i) => [i+1, s.A, s.B]);
+  if (S.cur.A || S.cur.B) p.push([`${S.sets.length+1} (in corso)`, S.cur.A, S.cur.B]);
+  return p;
+};
+const fname = ext => `scout_${nm('B').replace(/\W+/g,'_')}_${new Date().toISOString().slice(0,10)}.${ext}`;
+
+// Salva il file: usa la capability "downloads" se pubblicata, altrimenti download classico
+async function saveFile(name, blob){
+  try {
+    const dl = window.claude ? await claude.use('downloads') : null;
+    if (dl) { await dl.save({ filename:name, data:blob }); return; }
+  } catch (e) { if (e && e.code === 'declined') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+
+async function exportPDF(){
+  const d = new jspdf.jsPDF();
+  d.setFontSize(18); d.text(`${nm('A')} vs ${nm('B')}`, 14, 18);
+  d.setFontSize(12);
+  d.text(`Risultato finale (set): ${S.wins.A} - ${S.wins.B}`, 14, 26);
+  d.text(new Date().toLocaleDateString('it-IT'), 196, 18, {align:'right'});
+  d.autoTable({ startY:32, head:[['Set', nm('A'), nm('B')]], body:partialRows(), theme:'grid' });
+  d.autoTable({ startY:d.lastAutoTable.finalY + 8, head:[['Set','Punteggio','Squadra','Giocatore','Azione']],
+                body:logRows(), styles:{fontSize:9}, headStyles:{fillColor:[37,99,235]} });
+  await saveFile(fname('pdf'), d.output('blob'));
+}
+
+async function exportXLSX(){
+  const wb = XLSX.utils.book_new();
+  const sum = [[`${nm('A')} vs ${nm('B')}`], ['Risultato finale (set)', S.wins.A, S.wins.B], [], ['Set', nm('A'), nm('B')], ...partialRows()];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), 'Riepilogo');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Set','Punteggio','Squadra','Giocatore','Azione'], ...logRows()]), 'Play-by-Play');
+  const out = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  await saveFile(fname('xlsx'), new Blob([out], { type:'application/octet-stream' }));
+}
+
+render();
+</script>
+</body>
+</html>
